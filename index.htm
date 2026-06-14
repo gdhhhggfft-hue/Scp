@@ -555,6 +555,138 @@
     outline:2px solid var(--blue);
     outline-offset:3px;
   }
+  .comment-form input:focus-visible,
+  .comment-form textarea:focus-visible,
+  .comment-form button:focus-visible{
+    outline:2px solid var(--blue);
+    outline-offset:2px;
+  }
+
+
+  /* ===== COMMENTS / TRANSMISSIONS SECTION ===== */
+  .comments-section{
+    margin-top:56px;
+    opacity:0;
+    transform:translateY(28px);
+    transition:opacity 0.7s cubic-bezier(.2,.7,.2,1), transform 0.7s cubic-bezier(.2,.7,.2,1);
+  }
+  .comments-section.in-view{
+    opacity:1;
+    transform:translateY(0);
+  }
+
+  .comment-form{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    margin-bottom:24px;
+  }
+  .comment-form input,
+  .comment-form textarea{
+    font-family:var(--mono);
+    font-size:0.9rem;
+    color:var(--ink);
+    background:var(--panel);
+    border:1px solid var(--panel-edge);
+    border-radius:3px;
+    padding:10px 14px;
+    outline:none;
+    transition:border-color 0.25s ease, box-shadow 0.25s ease;
+    resize:vertical;
+  }
+  .comment-form input::placeholder,
+  .comment-form textarea::placeholder{
+    color:var(--ink-dim);
+  }
+  .comment-form input:focus,
+  .comment-form textarea:focus{
+    border-color:var(--blue);
+    box-shadow:0 0 0 3px rgba(33,150,214,0.15);
+  }
+  .comment-form textarea{
+    min-height:90px;
+  }
+  .comment-form button{
+    align-self:flex-start;
+    font-family:var(--mono);
+    font-size:0.85rem;
+    letter-spacing:0.15em;
+    text-transform:uppercase;
+    color:#0c1014;
+    background:var(--blue);
+    border:none;
+    border-radius:3px;
+    padding:10px 22px;
+    cursor:pointer;
+    transition:transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  }
+  .comment-form button:hover{
+    transform:translateY(-2px);
+    box-shadow:0 6px 18px rgba(33,150,214,0.35);
+  }
+  .comment-form button:active{
+    transform:translateY(0px) scale(0.98);
+  }
+  .comment-form button:disabled{
+    opacity:0.5;
+    cursor:default;
+    transform:none;
+    box-shadow:none;
+  }
+  .comment-status{
+    font-family:var(--mono);
+    font-size:0.78rem;
+    color:var(--ink-dim);
+    min-height:1.2em;
+  }
+  .comment-status.error{ color:var(--alert); }
+  .comment-status.ok{ color:var(--blue); }
+
+  .comment-list{
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+  .comment-item{
+    border:1px solid var(--panel-edge);
+    border-left:3px solid var(--blue);
+    background:var(--panel);
+    border-radius:0 4px 4px 0;
+    padding:14px 18px;
+    opacity:0;
+    animation:fade-up 0.5s ease-out forwards;
+  }
+  .comment-item .meta{
+    font-family:var(--mono);
+    font-size:0.74rem;
+    color:var(--blue);
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    margin-bottom:6px;
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .comment-item .body-text{
+    font-size:0.95rem;
+    color:var(--ink);
+    word-break:break-word;
+    white-space:pre-wrap;
+  }
+  .comment-empty{
+    font-family:var(--mono);
+    font-size:0.85rem;
+    color:var(--ink-dim);
+    padding:18px;
+    border:1px dashed var(--panel-edge);
+    border-radius:3px;
+    text-align:center;
+  }
+  .comment-loading{
+    font-family:var(--mono);
+    font-size:0.8rem;
+    color:var(--ink-dim);
+  }
 </style>
 </head>
 <body>
@@ -695,6 +827,23 @@
     </div>
   </section>
 
+  <section class="comments-section">
+    <div class="label">Field Reports</div>
+    <h2>Leave a transmission</h2>
+    <p>Anyone who has encountered The Eomesk, or simply has a theory, may log it here. All entries are visible to other visitors.</p>
+
+    <form class="comment-form" id="commentForm">
+      <input type="text" id="commentName" placeholder="Your designation (name, optional)" maxlength="40" autocomplete="off">
+      <textarea id="commentBody" placeholder="Describe what you witnessed..." maxlength="500" required></textarea>
+      <button type="submit" id="commentSubmit">Submit Report</button>
+      <div class="comment-status" id="commentStatus"></div>
+    </form>
+
+    <div class="comment-list" id="commentList">
+      <div class="comment-loading">Loading field reports...</div>
+    </div>
+  </section>
+
   <footer>
     BUT REGARDLESS OF THE TITLE, ONE FACT REMAINS UNCHANGED:
     <div class="smile-final">‿</div>
@@ -736,6 +885,108 @@
   }, { threshold: 0.35 });
 
   panels.forEach(p=>obs.observe(p));
+
+  // ===== FIELD REPORTS (shared comments via window.storage) =====
+  const COMMENT_INDEX_KEY = 'eomesk:comments:index';
+  const commentList = document.getElementById('commentList');
+  const commentForm = document.getElementById('commentForm');
+  const commentName = document.getElementById('commentName');
+  const commentBody = document.getElementById('commentBody');
+  const commentSubmit = document.getElementById('commentSubmit');
+  const commentStatus = document.getElementById('commentStatus');
+
+  function escapeHtml(str){
+    return str.replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function formatTime(ts){
+    try{
+      const d = new Date(ts);
+      return d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    }catch(e){ return ''; }
+  }
+
+  function renderComments(comments){
+    if(!comments || comments.length === 0){
+      commentList.innerHTML = '<div class="comment-empty">No transmissions logged yet. Be the first.</div>';
+      return;
+    }
+    // newest first
+    const sorted = [...comments].sort((a,b)=> (b.ts||0) - (a.ts||0));
+    commentList.innerHTML = sorted.map((c, i) => `
+      <div class="comment-item" style="animation-delay:${Math.min(i*0.05,0.4)}s">
+        <div class="meta">
+          <span>${escapeHtml(c.name || 'Anonymous Witness')}</span>
+          <span>${formatTime(c.ts)}</span>
+        </div>
+        <div class="body-text">${escapeHtml(c.text)}</div>
+      </div>
+    `).join('');
+  }
+
+  async function loadComments(){
+    try{
+      const result = await window.storage.get(COMMENT_INDEX_KEY, true);
+      const comments = result && result.value ? JSON.parse(result.value) : [];
+      renderComments(comments);
+    }catch(err){
+      // key likely doesn't exist yet
+      renderComments([]);
+    }
+  }
+
+  async function saveComments(comments){
+    await window.storage.set(COMMENT_INDEX_KEY, JSON.stringify(comments), true);
+  }
+
+  if(commentForm){
+    commentForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const text = commentBody.value.trim();
+      if(!text){
+        commentStatus.textContent = 'Write something before submitting.';
+        commentStatus.className = 'comment-status error';
+        return;
+      }
+      commentSubmit.disabled = true;
+      commentStatus.textContent = 'Transmitting...';
+      commentStatus.className = 'comment-status';
+
+      try{
+        let comments = [];
+        try{
+          const result = await window.storage.get(COMMENT_INDEX_KEY, true);
+          comments = result && result.value ? JSON.parse(result.value) : [];
+        }catch(err){ comments = []; }
+
+        comments.push({
+          name: commentName.value.trim().slice(0,40),
+          text: text.slice(0,500),
+          ts: Date.now()
+        });
+
+        await saveComments(comments);
+        renderComments(comments);
+
+        commentStatus.textContent = 'Report logged.';
+        commentStatus.className = 'comment-status ok';
+        commentBody.value = '';
+      }catch(err){
+        commentStatus.textContent = 'Could not save report. Try again.';
+        commentStatus.className = 'comment-status error';
+      }finally{
+        commentSubmit.disabled = false;
+      }
+    });
+  }
+
+  loadComments();
+
+  // include the comments section in the scroll-reveal observer
+  const commentsSection = document.querySelector('.comments-section');
+  if(commentsSection){ revealObs.observe(commentsSection); }
 </script>
 
 </body>
